@@ -1,16 +1,16 @@
-//Import electron
+//Import dependencies
+var ejs = require('ejs');
 var electron = require('electron');
+var fs = require('fs');
+var mime = require('mime');
+var path = require('path');
+var url = require('url');
+
+//Import app
 var app = electron.app;
 
-//Import dependencies
-var fs = require('fs');
-var path = require('path');
-var pathurl = require('url');
-var ejs = require('ejs');
-var mime = require('mime');
-
 //Main function
-function ElectronEjs(options)
+module.exports = function(options)
 {
   //Check options
   if(typeof options === 'undefined') { var options = {}; }
@@ -19,7 +19,7 @@ function ElectronEjs(options)
   app.on('ready', function(){
 
     //Import protocol
-    var protocol = require('protocol');
+    var protocol = electron.protocol;
 
     //Intercept the file protocol
     protocol.interceptBufferProtocol('file', function(request, callback){
@@ -31,41 +31,69 @@ function ElectronEjs(options)
       var extension = path.extname(file);
 
       //Get the file content
-      var content = fs.readFileSync(file, 'utf8');
+      fs.readFile(file, 'utf8', function(err, content){
 
-      //Check the extension
-      if(extension === '.ejs')
-      {
-        //Add the path to options
-        options.filename = file;
+        //Check for error opening the file
+        if(err)
+        {
+          //File not found
+          return callback(-6);
+        }
 
-        //Get the full file
-        var full = ejs.render(content, options)
+        try
+        {
+          //Convert the content to utf8
+          content = content.toString('utf8');
 
-        //Return the callback
-        return callback({data: new Buffer(full), mimeType:'text/html'});
-      }
-      else
-      {
-        //Get the mime type
-        var mimet = mime.lookup(extension);
+          //Initialize the mime type
+          var mimet = 'text/html';
 
-        //Return the callback
-        return callback({data: new Buffer(content), mimeType: mimet});
-      }
+          //Check the extension
+          if(extension === '.ejs')
+          {
+            //Add the path to options
+            options.filename = file;
+
+            //Get the full file
+            content = ejs.render(content, options);
+          }
+          else
+          {
+            //Get the mime type
+            mimet = mime.lookup(extension);
+          }
+
+          //Return the callback
+          return callback({ data: new Buffer(content), mimeType: mimet });
+        }
+        catch(ex)
+        {
+          //A generic failure occurred
+          return callback(-2);
+        }
+
+      });
     });
   });
 }
 
-//Function for parse the path
-function ParsePath(url)
+//Function to parse the path
+function ParsePath(u)
 {
   //Parse the url
-  var p = pathurl.parse(url);
+  var p = url.parse(u);
+
+  //Get the path name
+  var pname = p.pathname;
+
+  //Check for Windows
+  if(process.platform === 'win32')
+  {
+    //Remove the first / from the path
+    //https://github.com/jmjuanes/electron-ejs/pull/4#issuecomment-219254028
+    pname = pname.substr(1);
+  }
 
   //Return the path name
-  return p.pathname;
+  return pname;
 }
-
-//Exports to node
-module.exports = ElectronEjs;
